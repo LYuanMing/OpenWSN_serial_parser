@@ -5,93 +5,12 @@ import binascii
 import time
 from openparser.openparser import OpenParser
 import logging
-import re
 import os
+from utils import extract_component_codes, extract_log_descriptions, extract_6top_rcs, extract_6top_states
 
-
-log = logging.getLogger('uinject')
+log = logging.getLogger('parser')
 log.setLevel(logging.ERROR)
 log.addHandler(logging.NullHandler())
-
-def extract_component_codes(fw_definitions_path):
-    # find component codes in opendefs.h
-    log.verbose("extracting firmware component names")
-
-    codes_found = {}
-    for line in open(fw_definitions_path, 'r'):
-        m = re.search(' *COMPONENT_([^ .]*) *= *(.*), *', line)
-        if m:
-            name = m.group(1)
-            try:
-                code = int(m.group(2), 16)
-            except ValueError:
-                log.error("component '{}' - {} is not a hex number".format(name, m.group(2)))
-            else:
-                log.debug("extracted component '{}' with code {}".format(name, code))
-                codes_found[code] = name
-
-    return codes_found
-
-
-def extract_log_descriptions(fw_definitions_path):
-    # find error codes in opendefs.h
-    log.verbose("extracting firmware log descriptions.")
-
-    codes_found = {}
-    for line in open(fw_definitions_path, 'r'):
-        m = re.search(' *ERR_.* *= *([xXA-Fa-f0-9]*), *// *(.*)', line)
-        if m:
-            desc = m.group(2).strip()
-            try:
-                code = int(m.group(1), 16)
-            except ValueError:
-                log.error("log description '{}' - {} is not a hex number".format(desc, m.group(2)))
-            else:
-                log.debug("extracted log description '{}' with code {}".format(desc, code))
-                codes_found[code] = desc
-
-    return codes_found
-
-
-def extract_6top_rcs(fw_6top_definitions_path):
-    # find sixtop return codes in sixtop.h
-    log.verbose("extracting 6top return codes.")
-
-    codes_found = {}
-    for line in open(fw_6top_definitions_path, 'r'):
-        m = re.search(' *#define *IANA_6TOP_RC_([^ .]*) *([xXA-Za-z0-9]+) *// *([^ .]*).*', line)
-        if m:
-            name = m.group(3)
-            try:
-                code = int(m.group(2), 16)
-            except ValueError:
-                log.error("return code '{}': {} is not a hex number".format(name, m.group(2)))
-            else:
-                log.debug("extracted 6top RC '{}' with code {}".format(name, code))
-                codes_found[code] = name
-
-    return codes_found
-
-
-def extract_6top_states(fw_6top_definitions_path):
-    # find sixtop state codes in sixtop.h
-    log.verbose("extracting 6top states.")
-
-    codes_found = {}
-    for line in open(fw_6top_definitions_path, 'r'):
-        m = re.search(' *SIX_STATE_([^ .]*) *= *([^ .]*), *', line)
-        if m:
-            name = m.group(1)
-            try:
-                code = int(m.group(2), 16)
-            except ValueError:
-                log.error("state '{}' - {} is not a hex number".format(name, m.group(2)))
-            else:
-                log.debug("extracted 6top state '{}' with code {}".format(name, code))
-                codes_found[code] = name
-
-    return codes_found
-
 
 class OpenHdlc(object):
     
@@ -236,7 +155,7 @@ class moteProbe(threading.Thread):
     def __init__(self,serialport=None):
         # self.fw_path = None # fw_path should be the path of openwsn-fw
         # definitions = self.extract_stack_defines()
-        from definitions import definitions # if no code update, you can directly use this definitions, otherwise you should execute code above to get updated definitions
+        from utils import definitions # if no code update, you can directly use this definitions, otherwise you should execute code above to get updated definitions
 
         # store params
         self.serialport           = serialport
@@ -275,8 +194,7 @@ class moteProbe(threading.Thread):
             "sixtop_returncodes": extract_6top_rcs(os.path.join(self.fw_path, 'openstack', '02b-MAChigh', 'sixtop.h')),
             "sixtop_states": extract_6top_states(os.path.join(self.fw_path, 'openstack', '02b-MAChigh', 'sixtop.h')),
         }
-        breakpoint()
-        print(definitions)
+        
         return definitions
 
     def run(self):
