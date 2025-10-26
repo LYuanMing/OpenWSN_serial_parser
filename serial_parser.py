@@ -21,10 +21,6 @@ class OpenHdlc(object):
     HDLC_CRCINIT           = 0xffff
     HDLC_CRCGOOD           = 0xf0b8
 
-    XOFF                   = b'\x13' 
-    XON                    = b'\x11'
-    XONXOFF_ESCAPE         = b'\x12'
-    XONXOFF_MASK           = b'\x10'
     # XOFF            is transmitted as [XONXOFF_ESCAPE,           XOFF^XONXOFF_MASK]==[0x12,0x13^0x10]==[0x12,0x03]
     # XON             is transmitted as [XONXOFF_ESCAPE,            XON^XONXOFF_MASK]==[0x12,0x11^0x10]==[0x12,0x01]
     # XONXOFF_ESCAPE  is transmitted as [XONXOFF_ESCAPE, XONXOFF_ESCAPE^XONXOFF_MASK]==[0x12,0x12^0x10]==[0x12,0x02]
@@ -90,9 +86,9 @@ class OpenHdlc(object):
         outBuf     = outBuf.replace(self.HDLC_ESCAPE, self.HDLC_ESCAPE+self.HDLC_ESCAPE_ESCAPED)
         outBuf     = outBuf.replace(self.HDLC_FLAG,   self.HDLC_ESCAPE+self.HDLC_FLAG_ESCAPED)
         
-        outBuf     = outBuf.replace(self.XOFF, self.XONXOFF_ESCAPE + (ord(self.XOFF)^ord(self.XONXOFF_MASK)).to_bytes())
-        outBuf     = outBuf.replace(self.XON, self.XONXOFF_ESCAPE + (ord(self.XON)^ord(self.XONXOFF_MASK)).to_bytes())
-        outBuf     = outBuf.replace(self.XONXOFF_ESCAPE, self.XONXOFF_ESCAPE + (ord(self.XONXOFF_ESCAPE)^ord(self.XONXOFF_MASK)).to_bytes())
+        # outBuf     = outBuf.replace(self.XOFF, self.XONXOFF_ESCAPE + (ord(self.XOFF)^ord(self.XONXOFF_MASK)).to_bytes())
+        # outBuf     = outBuf.replace(self.XON, self.XONXOFF_ESCAPE + (ord(self.XON)^ord(self.XONXOFF_MASK)).to_bytes())
+        # outBuf     = outBuf.replace(self.XONXOFF_ESCAPE, self.XONXOFF_ESCAPE + (ord(self.XONXOFF_ESCAPE)^ord(self.XONXOFF_MASK)).to_bytes())
 
         # add flags
         outBuf     = self.HDLC_FLAG + outBuf + self.HDLC_FLAG
@@ -117,9 +113,9 @@ class OpenHdlc(object):
         outBuf     = outBuf.replace(self.HDLC_ESCAPE+self.HDLC_FLAG_ESCAPED,   self.HDLC_FLAG)
         outBuf     = outBuf.replace(self.HDLC_ESCAPE+self.HDLC_ESCAPE_ESCAPED, self.HDLC_ESCAPE)
 
-        outBuf     = outBuf.replace(self.XONXOFF_ESCAPE + (ord(self.XOFF)^ord(self.XONXOFF_MASK)).to_bytes(), self.XOFF)
-        outBuf     = outBuf.replace(self.XONXOFF_ESCAPE + (ord(self.XON)^ord(self.XONXOFF_MASK)).to_bytes(), self.XON)
-        outBuf     = outBuf.replace(self.XONXOFF_ESCAPE + (ord(self.XONXOFF_ESCAPE)^ord(self.XONXOFF_MASK)).to_bytes(), self.XONXOFF_ESCAPE)
+        # outBuf     = outBuf.replace(self.XONXOFF_ESCAPE + (ord(self.XOFF)^ord(self.XONXOFF_MASK)).to_bytes(), self.XOFF)
+        # outBuf     = outBuf.replace(self.XONXOFF_ESCAPE + (ord(self.XON)^ord(self.XONXOFF_MASK)).to_bytes(), self.XON)
+        # outBuf     = outBuf.replace(self.XONXOFF_ESCAPE + (ord(self.XONXOFF_ESCAPE)^ord(self.XONXOFF_MASK)).to_bytes(), self.XONXOFF_ESCAPE)
 
         if len(outBuf)<2:
             raise Exception('packet too short')
@@ -130,8 +126,6 @@ class OpenHdlc(object):
             crc    = self._crcIteration(crc,b)
 
         if crc!=self.HDLC_CRCGOOD:
-           if outBuf[1] != 19 and outBuf[1] != 17:
-               breakpoint()
            raise Exception('wrong CRC')
         # remove CRC
         outBuf     = outBuf[:-2] # remove CRC
@@ -151,6 +145,11 @@ class moteProbe(threading.Thread):
     CMD_SEND_DATA   = '7e44141592000012e63b78001180bbbb0000000000000000000000000001bbbb000000000000141592000012e63b07d007d0000ea30d706f69706f697a837e'
     SLOT_DURATION   = 0.015
     UINJECT_MASK    = 'uinject'
+    
+    XOFF           = 0x13
+    XON            = 0x11
+    XONXOFF_ESCAPE = 0x12
+    XONXOFF_MASK   = 0x10
     
     def __init__(self,serialport=None):
         # self.fw_path = None # fw_path should be the path of openwsn-fw
@@ -198,83 +197,100 @@ class moteProbe(threading.Thread):
         return definitions
 
     def run(self):
-        try:
+        # try:
             
-            while self.goOn:     # open serial port
-                
-                self.serial = serial.Serial(self.serialport,'115200')
-                
-                while self.goOn: # read bytes from serial port
-                    try:
-                        rxByte = self.serial.read(1)
-                        if rxByte == b'\x13' or rxByte == b'\x11':
-                            if self.busyReceiving == False:
-                                continue
-                                
-                    except Exception as err:
-                        print(err)
-                        time.sleep(1)
-                        break
-                    else:
-                        if      (
-                                    (not self.busyReceiving)             and 
-                                    self.lastRxByte==self.hdlc.HDLC_FLAG and
-                                    rxByte!=self.hdlc.HDLC_FLAG
-                                ):
-                            # start of frame
-                            self.busyReceiving       = True
-                            self.inputBuf            = self.hdlc.HDLC_FLAG
-                            self.inputBuf           += rxByte
-                        elif    (
-                                    self.busyReceiving                   and
-                                    rxByte!=self.hdlc.HDLC_FLAG
-                                ):
-                            # middle of frame
+        while self.goOn:     # open serial port
+            
+            self.serial = serial.Serial(self.serialport,'115200')
+            
+            while self.goOn: # read bytes from serial port
+                try:
+                    rxByte = self.serial.read(1)
                             
-                            self.inputBuf           += rxByte
-                        elif    (
-                                    self.busyReceiving                   and
-                                    rxByte==self.hdlc.HDLC_FLAG
-                                ):
-                            # end of frame
-                            self.busyReceiving       = False
-                            self.inputBuf           += rxByte
-                            
-                            try:
-                                tempBuf              = self.inputBuf
-                                self.inputBuf        = self.hdlc.dehdlcify(self.inputBuf)
-                            except Exception as err:
-                                print('{0}: invalid serial frame: {2} {1}'.format(self.name, err, tempBuf))
-                            else:
-                                # if   self.inputBuf==[ord('R')]:
-                                #     with self.outputBufLock:
-                                #         if self.outputBuf:
-                                #             outputToWrite = self.outputBuf.pop(0)
-                                #             #print ''.join(['{0:02x}'.format(ord(b)) for b in outputToWrite])
-                                #             self.serial.write(outputToWrite)
-                                # elif self.inputBuf[0]==ord('D'):
-                                #     if self.UINJECT_MASK == ''.join(chr(i) for i in self.inputBuf[-7:]):
-                                #         asn_inital  = struct.unpack('<HHB',''.join([chr(c) for c in self.inputBuf[3:8]]))
-                                #         asn_arrive  = struct.unpack('<HHB',''.join([chr(c) for c in self.inputBuf[-14:-9]]))
-                                #         counter     = struct.unpack('<h',''.join([chr(b) for b in self.inputBuf[-9:-7]]))[0]
+                except Exception as err:
+                    print(err)
+                    time.sleep(1)
+                    break
+                else:
+                    if      (
+                                (not self.busyReceiving)             and 
+                                self.lastRxByte==self.hdlc.HDLC_FLAG and
+                                rxByte!=self.hdlc.HDLC_FLAG
+                            ):
+                        # start of frame
+                        self.busyReceiving       = True
+                        self.xonxoffEscaping     = False
+                        self.inputBuf            = self.hdlc.HDLC_FLAG
+                        self._addToInputBuf(rxByte)
+                    elif    (
+                                self.busyReceiving                   and
+                                rxByte!=self.hdlc.HDLC_FLAG
+                            ):
+                        # middle of frame
+                        
+                        self._addToInputBuf(rxByte)
+                    elif    (
+                                self.busyReceiving                   and
+                                rxByte==self.hdlc.HDLC_FLAG
+                            ):
+                        # end of frame
+                        self.busyReceiving       = False
+                        self._addToInputBuf(rxByte)
+                        
+                        try:
+                            tempBuf              = self.inputBuf
+                            self.inputBuf        = self.hdlc.dehdlcify(self.inputBuf)
+                        except Exception as err:
+                            # print('{0}: invalid serial frame: {2} {1}'.format(self.name, err, tempBuf))
+                            if self.inputBuf[1]==ord('D'):
+                                # breakpoint()
+                                string_index =  self.inputBuf.find(bytes(self.UINJECT_MASK, encoding="utf-8"))
+                                self.inputBuf = self.inputBuf[string_index:]
+                                if string_index >= 0:
+                                    
+                                    counter = struct.unpack('<H', self.inputBuf[7:9])
+                                    asn = struct.unpack('<HHB', self.inputBuf[9:14])
+                                    used_TX_cell = struct.unpack('<B',self.inputBuf[14:15])
+                                    used_RX_cell = struct.unpack('<B',self.inputBuf[15:16])
+                                    ADD_16B = struct.unpack('<H',self.inputBuf[16:18])
+                                    temperature = struct.unpack('<i', self.inputBuf[18:22])
+                                    # print("uinject counter, ", counter[0],self.inputBuf[8]*256+self.inputBuf[7])
+                                    # print("asn, ", asn[0]+asn[1]*65536+asn[2]*65536*65536, self.inputBuf[9]+self.inputBuf[10]* 256 + (self.inputBuf[11]+self.inputBuf[12]*256) * 65536 + (self.inputBuf[13]) * 65536 * 65536)
+                                    # print("Addr, ", hex(ADD_16B[0]))
+                                    # print("temperature, ", temperature[0]*0.25)
+                                    print("count: ", counter[0], " temp: ", temperature[0] * 0.25)
+                                    
 
-                                #         if self.last_counter!=None:
-                                #             if counter-self.last_counter!=1:
-                                #                 print('MISSING {0} packets!!'.format(counter-self.last_counter-1))
-                                #         self.last_counter = counter
-                                #         print("{0:^7} {1:^15}".format(counter, self.SLOT_DURATION*((asn_inital[0]-asn_arrive[0])+(asn_inital[1]-asn_arrive[1])*256+(asn_inital[2]-asn_arrive[2])*65536)))
-                                        
-                                #         with self.outputBufLock:
-                                #             self.outputBuf += [binascii.unhexlify(self.CMD_SEND_DATA)]
-                                # else:
-                                #     print(f"output something but can not parse: {self.inputBuf}")
-                                result = self.parser.parse_input(self.inputBuf)
-                                print(result)
+                        else:
+                            if   self.inputBuf==[ord('R')]:
+                                with self.outputBufLock:
+                                    if self.outputBuf:
+                                        outputToWrite = self.outputBuf.pop(0)
+                                        #print ''.join(['{0:02x}'.format(ord(b)) for b in outputToWrite])
+                                        self.serial.write(outputToWrite)
+                            # elif self.inputBuf[0]==ord('D'):
+                                # if self.UINJECT_MASK == ''.join(chr(i) for i in self.inputBuf[-7:]):
+                                    # asn_inital  = struct.unpack('<HHB',''.join([chr(c) for c in self.inputBuf[3:8]]))
+                                    # asn_arrive  = struct.unpack('<HHB',''.join([chr(c) for c in self.inputBuf[-14:-9]]))
+                                    # counter     = struct.unpack('<h',''.join([chr(b) for b in self.inputBuf[-9:-7]]))[0]
 
-                        self.lastRxByte = rxByte
+                                    # if self.last_counter!=None:
+                                        # if counter-self.last_counter!=1:
+                                            # print('MISSING {0} packets!!'.format(counter-self.last_counter-1))
+                                    # self.last_counter = counter
+                                    # print("{0:^7} {1:^15}".format(counter, self.SLOT_DURATION*((asn_inital[0]-asn_arrive[0])+(asn_inital[1]-asn_arrive[1])*256+(asn_inital[2]-asn_arrive[2])*65536)))
+                                    
+                                    # with self.outputBufLock:
+                                        # self.outputBuf += [binascii.unhexlify(self.CMD_SEND_DATA)]
+                            elif self.inputBuf[0]==ord('S'):
+                                # result = self.parser.parse_input(self.inputBuf)
+                                # print(result)
+                                pass
+
+                    self.lastRxByte = rxByte
                     
-        except Exception as err:
-            print(err)
+        # except Exception as err:
+            # print(err)
     
     #======================== public ==========================================
     
@@ -282,9 +298,19 @@ class moteProbe(threading.Thread):
         self.goOn = False
     
     #======================== private =========================================
+    
+    def _addToInputBuf(self,byte):
+        if byte==chr(self.XONXOFF_ESCAPE):
+            self.xonxoffEscaping = True
+        else:
+            if self.xonxoffEscaping==True:
+                self.inputBuf += chr(ord(byte)^self.XONXOFF_MASK)
+                self.xonxoffEscaping=False
+            elif byte!=chr(self.XON) and byte!=chr(self.XOFF):
+                self.inputBuf += byte
 
 def main():
     print('poipoi')
 
 if __name__=="__main__":
-    moteProbe('COM19')
+    moteProbe('COM16')
