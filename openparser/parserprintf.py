@@ -58,4 +58,4 @@ class ParserPrintf(parser.Parser):
         sys.stdout.flush()
 
         # everything was fine
-        return 'error', data
+        return data

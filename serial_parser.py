@@ -169,7 +169,7 @@ class moteProbe(threading.Thread):
         self.outputBufLock        = threading.RLock()
         self.dataLock             = threading.Lock()
         self.parser               = OpenParser(stack_defines=definitions, mqtt_broker=None, mote_port=serialport)
-        
+        self.is_sync              = False
         # flag to permit exit from read loop
         self.goOn                 = True
         
@@ -286,6 +286,9 @@ class moteProbe(threading.Thread):
                                 # result = self.parser.parse_input(self.inputBuf)
                                 # print(result)
                                 pass
+                            else:
+                                result = self.parser.parse_input(self.inputBuf)
+                                print(result)
 
                     self.lastRxByte = rxByte
                     
